@@ -1,0 +1,66 @@
+界徐盛 v49a：只修非杀误触发破军；不处理失去装备被动
+
+基线: sgs_v47_baiyin_pipeline_fix_v48a.ipa
+输出: sgs_v48_sha_only_trigger_fix_v49a.ipa
+ZIP integrity: OK
+Output IPA SHA256: 8711fbe9730e7c05031057365e3e91fe4fce2ef96fbc95dcde1136efe8f1efb8
+Output main SHA256: 28825812ab73db8f4500b775a6b6b8b3355b7dd31a701ccc6d7519e4e8b346c3
+
+一、改动
+1. 只修“决斗触发破军”：在 11146 candidate repeat guard 中增加 parent action vtable 校验。
+2. 只有 parent action 的 vptr == Sha vtable 才允许进入 11146 candidate 逻辑。
+3. 不修改 MoveCards / TurnEnd restore / damage pipeline / game.lib / XML / 资源。
+4. 不屏蔽白银狮子、枭姬等失去装备触发。
+
+二、改动对应项目代码依据
+v31/v48 的第一层 gate 只验证：
+- skillId == 11146
+- parent action +0x110/+0x90 得到的 sourceRole
+- currentRole == sourceRole
+- sourceRole.HasSpellId(11146)
+
+这可以区分“谁使用”，但不能区分 parent action 是 Sha 还是 Duel。
+所以界徐盛使用决斗时，也可能满足 sourceRole/HasSpellId 条件而误触发。
+
+本版新增硬校验：
+- parent action = *(optAction+0xa0)
+- parent vptr = *(parent action)
+- Sha vptr = 0x1010ea9a0
+- 只有 parent vptr 匹配 Sha 才继续 11146。
+
+装备扣置触发白银狮子/枭姬：
+- 当前实现确实从 target.equip(+0xc8) MoveCards 到 target.removed(+0x138)。
+- 按原始事件链，这属于从装备区失去牌。
+- 因此本版不把失去装备类被动当 bug 屏蔽，避免破坏其他角色/装备结算完整性。
+
+扣置过的装备后续在过拆/顺手 UI 中仍可见：
+- 你已验证点击不生效，说明 native zone/MoveCards 权限层已阻止。
+- 本轮不做客户端显示层强行过滤，避免引入新的 UI/cache 全局回归。
+
+三、实际 patch
+0x2b60 cave replaced with:
+
+/mnt/data/sgs_v49_fix/patch_v49.o:	file format mach-o arm64
+
+Disassembly of section __TEXT,__text:
+
+0000000000000000 <ltmp0>:
+       0: b4ffff6a     	cbz	x10, 0xffffffffffffffec <ltmp0+0xffffffffffffffec>
+       4: f940014d     	ldr	x13, [x10]
+       8: 9000874e     	adrp	x14, 0x10e8000 <ltmp0+0x10e8000>
+       c: 912681ce     	add	x14, x14, #0x9a0
+      10: eb0e01bf     	cmp	x13, x14
+      14: 54fffec1     	b.ne	0xffffffffffffffec <ltmp0+0xffffffffffffffec>
+      18: 3944fd4c     	ldrb	w12, [x10, #0x13f]
+      1c: 7102a19f     	cmp	w12, #0xa8
+      20: 54fffe60     	b.eq	0xffffffffffffffec <ltmp0+0xffffffffffffffec>
+      24: f940894b     	ldr	x11, [x10, #0x110]
+      28: 17ffffe4     	b	0xffffffffffffffb8 <ltmp0+0xffffffffffffffb8>
+
+
+四、测试预期
+1. 界徐盛使用【杀】：破军仍正常触发。
+2. 界徐盛使用【决斗】：不应触发破军确认。
+3. 手牌/装备扣置、破军标记、回合结束返还不回归。
+4. 白银狮子/枭姬等失去装备触发保持原始事件链。
+5. 扣置过的装备若仍在过拆/顺手 UI 中显示，但点击不生效，先视为显示缓存问题，不影响本版规则正确性。
