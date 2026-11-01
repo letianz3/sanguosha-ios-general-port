@@ -1,119 +1,115 @@
-# SGS iOS 单机联网武将本地移植
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:8E0E00,100:1F1C18&height=190&section=header&text=三国杀%20iOS%20单机魔改&fontSize=40&fontColor=F5D78E&fontAlignY=38&desc=把界徐盛塞进单机版的折腾记录%20⚔️&descAlignY=60&descSize=18" alt="header">
+</p>
 
-本仓库用于维护《三国杀单机版 iOS 4.4.2.4》的本地移植实验：在离线单机环境中，把部分原本依赖联网版本、或当前客户端未完整开放的武将技能，尽量按原版逻辑补回到本地可运行版本中。
+<p align="center">
+  <img src="https://img.shields.io/badge/当前版本-v49a-success?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/iOS-单机版%204.4.2.4-black?style=flat-square&logo=apple" alt="client">
+  <img src="https://img.shields.io/badge/折腾了-49%20个版本-orange?style=flat-square" alt="versions">
+  <img src="https://img.shields.io/badge/真机测试-能打-brightgreen?style=flat-square" alt="tested">
+</p>
 
-当前重点是“界徐盛 / 新破军”的完整本地实现。项目目标不是简单改 XML 让武将出现，而是让武将能够在本地局内完成真实技能流程，包括触发条件、确认窗口、选牌面板、扣置、标记、回合结束返还、伤害加成，以及与防具/锦囊/其他技能的兼容。
+> 单机版没有界徐盛，那就自己补一个。🙃
+>
+> 一开始只想改改 XML 让他能选，结果发现技能根本跑不起来，于是一路逆向 + 打补丁，
+> 前前后后折腾了几十个版本，到 v49a 终于让【新破军】在单机里完整跑通了。
 
-## 当前进度
+## 🎉 现在能干嘛
 
-当前稳定归档版本：`v49a`。
+- ✅ 单机里能直接选界徐盛（顺带还有曹冲）
+- ✅ 出【杀】会问你要不要发动破军，取消的话【杀】照常结算
+- ✅ 发动后弹出官方的选牌面板，扣对面的手牌或装备
+- ✅ 扣掉的牌带破军标记，回合结束还回去
+- ✅ 伤害 +1，而且白银狮子照样能挡
+- ✅ 用【决斗】不会乱触发，一次【杀】也只问一次
+- ✅ 普通对局不受影响，不会莫名其妙弃牌或乱回合
 
-已完成：
+## 🧭 破军是怎么跑的
 
-- 界徐盛已可在本地正常选择。
-- 新破军只会在界徐盛使用【杀】时触发。
-- 已修复【决斗】误触发新破军的问题。
-- 一次【杀】内新破军只确认一次，不再重复弹窗。
-- 第一层确认/取消流程正常；取消后原【杀】继续结算。
-- 第二层使用官方 PoJunNew 选牌面板，可选择目标手牌和装备。
-- 被扣置牌会从当前区域移出，并显示破军标记。
-- 当前回合结束后，被扣置牌会正常返还。
-- 破军伤害 +1 已接入原始伤害 pipeline，白银狮子及同类减伤/封顶效果正常处理。
-- 普通武将、普通出牌、杀/闪/伤害/弃牌/回合结束等主体结算保持稳定。
+```mermaid
+flowchart TD
+    A[界徐盛出【杀】] --> B{真的是【杀】吗?}
+    B -- 不是 --> X[啥也不发生]
+    B -- 是 --> C[要发动新破军吗?]
+    C -- 算了 --> D[【杀】照常结算]
+    C -- 发动 --> E[官方选牌面板]
+    E --> F[扣手牌 / 装备<br/>挂上破军标记]
+    F --> G[伤害 +1<br/>防具照常生效]
+    G --> H[回合结束还牌]
+```
 
-已知取舍：
+## 🪦 踩坑史
 
-- 扣置装备属于从装备区失去牌，因此可能触发白银狮子、孙尚香【枭姬】等“失去装备”类被动。本项目当前保留原始事件链行为，不强行屏蔽。
-- 已扣置装备在部分客户端 UI 中可能仍被过河拆桥/顺手牵羊面板显示，但已验证点击不生效；当前视为显示缓存问题，不优先改动，以避免破坏主体结算。
+| 版本 | 干了啥 | 结果 |
+|---|---|---|
+| v42a / v43a | 一口气 hook 了一堆 native 逻辑 | 💥 整局乱套，莫名弃牌、回合错乱 |
+| v44a | 全部回退，只留资源和配置 | 😐 稳了，但界徐盛选不了 |
+| v45a | 改点将配置 | 🙂 能选了 |
+| v46a | 把技能逻辑加回来 | 😵 一次【杀】问好几遍 |
+| v47a | 加个防重复的 guard | 🙂 好了 |
+| v48a | 破军 +1 挪到伤害计算前面 | 🙂 白银狮子终于正常 |
+| **v49a** | **检查触发源到底是不是【杀】** | 🎉 **【决斗】不再误触发，收工** |
 
-## 仓库内容
+<details>
+<summary>🔬 v49a 那个关键补丁（给好奇的人看）</summary>
 
 ```text
-README.md
-reports/
-  FINAL_REPORT_v49.md
-  sgs_v48_sha_only_trigger_fix_v49a_report.txt
-skills/
-  SKILL_7_final_v49.md
-artifacts/
-  sgs_v48_sha_only_trigger_fix_v49a.ipa
-  sgs_v48_sha_only_trigger_fix_v49a.ipa.sha256
+parentAction = *(optAction + 0xa0)
+parentVptr   = *(parentAction)
+require parentVptr == Sha vtable 0x1010ea9a0
 ```
 
-说明：
+就是看一眼触发破军的那个动作的虚表，是【杀】才放行。完整反汇编在
+[`reports/sgs_v48_sha_only_trigger_fix_v49a_report.txt`](reports/sgs_v48_sha_only_trigger_fix_v49a_report.txt)。
 
-- `README.md`：项目目标、当前进度和使用方式。
-- `reports/FINAL_REPORT_v49.md`：从基线到 v49a 的综合维护报告。
-- `reports/sgs_v48_sha_only_trigger_fix_v49a_report.txt`：v49a 构建与 patch 校验报告。
-- `skills/SKILL_7_final_v49.md`：维护本项目时使用的逆向/补丁经验记录。
-- `artifacts/*.ipa`：最终可安装包，未签名或需自行重签。
-- `artifacts/*.sha256`：IPA 校验文件。
+</details>
 
-## 如何使用
+## 🤷 已知小毛病
 
-### 1. 获取 IPA
+- 扣对面装备会触发白银狮子、孙尚香【枭姬】这类“失去装备”的技能。按规则这其实说得通，就没管。
+- 被扣掉的装备有时还会出现在过拆 / 顺手的面板里，但点了没用，应该只是显示缓存，懒得冒险改。
 
-下载最终 IPA：
+## 📦 里面有啥
 
 ```text
-artifacts/sgs_v48_sha_only_trigger_fix_v49a.ipa
+├── reports/     # 从 v44a 到 v49a 的维护报告和构建记录
+├── skills/      # 逆向 / 打补丁时攒下来的经验笔记
+└── artifacts/   # v49a 安装包（未签名）和 sha256
 ```
 
-或从 GitHub Release 附件中下载同名文件。
+<details>
+<summary>🧪 想自己装来玩？</summary>
 
-### 2. 校验文件
+1. 先校验一下 IPA：
 
-使用 sha256 校验最终 IPA：
+   ```text
+   8711fbe9730e7c05031057365e3e91fe4fce2ef96fbc95dcde1136efe8f1efb8  sgs_v48_sha_only_trigger_fix_v49a.ipa
+   ```
 
-```text
-8711fbe9730e7c05031057365e3e91fe4fce2ef96fbc95dcde1136efe8f1efb8  sgs_v48_sha_only_trigger_fix_v49a.ipa
-```
+   macOS / Linux 用 `shasum -a 256`，Windows 用 `Get-FileHash -Algorithm SHA256`。
 
-macOS / Linux：
+2. 用你自己的证书或工具重签（AltStore、Sideloadly、TrollStore 都行）。这里不提供证书。
 
-```bash
-shasum -a 256 artifacts/sgs_v48_sha_only_trigger_fix_v49a.ipa
-```
+3. 进游戏试试：普通武将先打一局 → 选界徐盛出【杀】→ 取消 / 发动各试一次 → 扣手牌、扣装备 → 打一下带白银狮子的 → 用【决斗】确认不触发。
 
-Windows PowerShell：
+</details>
 
-```powershell
-Get-FileHash .\artifacts\sgs_v48_sha_only_trigger_fix_v49a.ipa -Algorithm SHA256
-```
+<details>
+<summary>📝 给以后的自己：别再踩的坑</summary>
 
-### 3. 重签并安装
+1. 以 v49a 为准，出问题就退回这里。
+2. 别再搞 v42a / v43a 那种全量 native hook。
+3. 一次只改一处，改完先打一局普通局。
+4. 先保证游戏能正常玩，再抠技能细节。
+5. UI 显示问题别动结算逻辑。
+6. 改 action / state 之前，先搞清楚 parent action、source / target role 到底是什么。
 
-该 IPA 不是 App Store 安装包。安装到 iOS 设备前，需要使用你自己的证书/工具重签，例如 AltStore、Sideloadly、TrollStore、企业证书或自有开发者证书流程。
+</details>
 
-本仓库不提供证书，也不包含自动签名流程。
+---
 
-### 4. 游戏内验证
+<sub>纯个人娱乐和学习逆向用，不商用。《三国杀》的版权归原权利人。</sub>
 
-推荐测试顺序：
-
-```text
-1. 普通武将打一局，确认主体结算稳定。
-2. 选择界徐盛。
-3. 使用【杀】，确认出现新破军提示。
-4. 点取消，确认原【杀】继续结算。
-5. 再次使用【杀】，点确定，进入目标手牌/装备选择面板。
-6. 扣置手牌，确认标记和回合结束返还。
-7. 扣置装备，确认装备移出、标记、回合结束返还。
-8. 目标装备白银狮子时测试伤害，确认最终伤害不穿透防具封顶。
-9. 使用【决斗】，确认不会触发新破军。
-```
-
-## 维护原则
-
-本项目经历过多轮回归问题，后续维护必须遵守以下原则：
-
-1. 以 `v49a` 作为当前稳定基线。
-2. 不要随意恢复 v42a/v43a 的全量 native hook；这些版本曾出现整局结算错乱。
-3. 每次只改一个层级，并做普通局回归测试。
-4. 优先保持游戏主体完整性，再追求单个技能细节。
-5. 不要把 UI 显示缓存问题升级成全局牌区/结算逻辑改动，除非有明确证据。
-6. 修改 action/state 相关逻辑时，必须先证明 parent action、source role、target role、state machine 的真实语义。
-
-## 当前最终结论
-
-截至 `v49a`，界徐盛已经在本地单机版中完整实现，核心技能链路和主体游戏结算均已通过真机测试。
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1F1C18,100:8E0E00&height=90&section=footer" alt="footer">
+</p>
